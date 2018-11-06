@@ -91,8 +91,8 @@ class NewExperiment extends Page<{}, NewExperimentState> {
             instance={this} field='description' height='auto' />
 
           <div className={commonCss.flex}>
-            <BusyButton id='createExperimentBtn' disabled={!!validationError} busy={this.state.isbeingCreated}
-              className={commonCss.buttonAction} title={'Next'}
+            <BusyButton id='createExperimentBtn' disabled={!!validationError}
+              busy={this.state.isbeingCreated} className={commonCss.buttonAction} title={'Next'}
               onClick={this._create.bind(this)} />
             <Button id='cancelNewExperimentBtn' onClick={() => this.props.history.push(RoutePage.EXPERIMENTS)}>
               Cancel

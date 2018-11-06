@@ -175,7 +175,7 @@ class NewRun extends Page<{}, NewRunState> {
           )}
 
           <div className={classes(commonCss.flex, padding(20, 'tb'))}>
-            <BusyButton id='createBtn' disabled={!!errorMessage} busy={this.state.isBeingCreated}
+            <BusyButton id='createNewRunBtn' disabled={!!errorMessage} busy={this.state.isBeingCreated}
               className={commonCss.buttonAction} title='Create'
               onClick={this._create.bind(this)} />
             <Button onClick={() => {
@@ -218,7 +218,8 @@ class NewRun extends Page<{}, NewRunState> {
           experimentId = RunUtils.getFirstExperimentReferenceId(originalRun.run);
         }
       } catch (err) {
-        await this.showPageError(`Error: failed to get original run: ${originalRunId}.`, err);
+        await this.showPageError(`Error: failed to retrieve original run: ${originalRunId}.`, err);
+        logger.error(`Failed find retrieve original run: ${originalRunId}`, err);
       }
     } else {
       // Get pipeline id from querystring if any
@@ -229,9 +230,8 @@ class NewRun extends Page<{}, NewRunState> {
           this.setState({ pipeline, pipelineName: (pipeline && pipeline.name) || '' });
         } catch (err) {
           urlParser.clear(QUERY_PARAMS.pipelineId);
-          await this.showPageError(
-            'Error: failed to find a pipeline corresponding to that of the original run:'
-            + ` ${originalRunId}.`, err);
+          await this.showPageError(`Error: failed to retrieve pipeline: ${possiblePipelineId}.`, err);
+          logger.error(`Failed find retrieve pipeline: ${possiblePipelineId}`, err);
         }
       }
     }
@@ -248,8 +248,9 @@ class NewRun extends Page<{}, NewRunState> {
           href: RoutePage.EXPERIMENT_DETAILS.replace(':' + RouteParams.experimentId, experimentId),
         });
       } catch (err) {
-        await this.showPageError(`Error: failed to get associated experiment: ${experimentId}.`, err);
-        logger.error(`Failed to get associated experiment ${experimentId}`, err);
+        await this.showPageError(
+          `Error: failed to retrieve associated experiment: ${experimentId}.`, err);
+        logger.error(`Failed to retrieve associated experiment: ${experimentId}`, err);
       }
     }
 
