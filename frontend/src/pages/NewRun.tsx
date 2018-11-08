@@ -52,6 +52,8 @@ interface NewRunState {
   pipeline?: ApiPipeline;
   // TODO: this is only here to properly display the name in the text field.
   // There is definitely a way to do this that doesn't necessitate this being in state.
+  // Note: this cannot be undefined/optional or the label animation for the input field will not
+  // work properly.
   pipelineName: string;
   pipelineSelectorOpen: boolean;
   runName: string;
@@ -165,9 +167,9 @@ class NewRun extends Page<{}, NewRunState> {
           <div className={commonCss.header}>Run parameters</div>
           <div>{this._runParametersMessage(pipeline)}</div>
 
-          {pipeline && pipeline.parameters && !!pipeline.parameters.length && (
+          {pipeline && Array.isArray(pipeline.parameters) && !!pipeline.parameters.length && (
             <div>
-              {pipeline && (pipeline.parameters || []).map((param, i) =>
+              {pipeline.parameters.map((param, i) =>
                 <TextField key={i} variant='outlined' label={param.name} value={param.value || ''}
                   onChange={(ev) => this._handleParamChange(i, ev.target.value || '')}
                   style={{ height: 40, maxWidth: 600 }} className={commonCss.textField} />)}
@@ -230,7 +232,8 @@ class NewRun extends Page<{}, NewRunState> {
           this.setState({ pipeline, pipelineName: (pipeline && pipeline.name) || '' });
         } catch (err) {
           urlParser.clear(QUERY_PARAMS.pipelineId);
-          await this.showPageError(`Error: failed to retrieve pipeline: ${possiblePipelineId}.`, err);
+          await this.showPageError(
+            `Error: failed to retrieve pipeline: ${possiblePipelineId}.`, err);
           logger.error(`Failed to retrieve pipeline: ${possiblePipelineId}`, err);
         }
       }
@@ -291,41 +294,47 @@ class NewRun extends Page<{}, NewRunState> {
 
   private async _prepareFormFromClone(originalRun: ApiRunDetail): Promise<void> {
     const associatedPipelineId = RunUtils.getPipelineId(originalRun.run);
-    if (originalRun.run && associatedPipelineId) {
-      let pipeline: ApiPipeline;
-      let workflow: Workflow;
-
-      try {
-        pipeline = await Apis.pipelineServiceApi.getPipeline(associatedPipelineId);
-      } catch (err) {
-        await this.showPageError(
-          'Error: failed to find a pipeline corresponding to that of the original run:'
-          + ` ${originalRun.run.id}.`, err);
-        return;
-      }
-
-      if (originalRun.pipeline_runtime!.workflow_manifest === undefined) {
-        await this.showPageError(`Error: run ${originalRun.run.id} had no workflow manifest`);
-        logger.error(originalRun.pipeline_runtime!.workflow_manifest);
-        return;
-      }
-      try {
-        workflow = JSON.parse(originalRun.pipeline_runtime!.workflow_manifest!) as Workflow;
-      } catch (err) {
-        await this.showPageError('Error: failed to parse the original run\'s runtime', err);
-        logger.error(originalRun.pipeline_runtime!.workflow_manifest);
-        return;
-      }
-
-      pipeline.parameters = WorkflowParser.getParameters(workflow);
-
-      this.setState({
-        pipeline,
-        pipelineName: (pipeline && pipeline.name) || '',
-        runName: this._getCloneName(originalRun.run.name!)
-      });
+    if (!originalRun.run || !associatedPipelineId) {
+      logger.verbose('Original run did not have an associated pipeline ID');
       return;
     }
+
+    let pipeline: ApiPipeline;
+    let workflow: Workflow;
+
+    try {
+      pipeline = await Apis.pipelineServiceApi.getPipeline(associatedPipelineId);
+    } catch (err) {
+      await this.showPageError(
+        'Error: failed to find a pipeline corresponding to that of the original run:'
+        + ` ${originalRun.run.id}.`, err);
+      return;
+    }
+
+    // TODO: Determine what is actually required from the pipeline if we have this manifest
+    if (originalRun.pipeline_runtime!.workflow_manifest === undefined) {
+      await this.showPageError(`Error: run ${originalRun.run.id} had no workflow manifest`);
+      logger.error(originalRun.pipeline_runtime!.workflow_manifest);
+      return;
+    }
+    try {
+      workflow = JSON.parse(originalRun.pipeline_runtime!.workflow_manifest!) as Workflow;
+    } catch (err) {
+      await this.showPageError('Error: failed to parse the original run\'s runtime.', err);
+      logger.error(originalRun.pipeline_runtime!.workflow_manifest);
+      return;
+    }
+
+    // Set pipeline parameter values from run's workflow
+    pipeline.parameters = WorkflowParser.getParameters(workflow);
+
+    this.setState({
+      pipeline,
+      pipelineName: (pipeline && pipeline.name) || '',
+      runName: this._getCloneName(originalRun.run.name!)
+    });
+
+    this._validate();
   }
 
   private async _pipelineSelectorClosed(confirmed: boolean): Promise<void> {
@@ -368,6 +377,8 @@ class NewRun extends Page<{}, NewRunState> {
 
   private _create(): void {
     const { pipeline } = this.state;
+    // TODO: This cannot currently be reached because _validate() is called everywhere and blocks
+    // the button from being clicked without first having a pipeline.
     if (!pipeline) {
       this.showErrorDialog('Run creation failed', 'Cannot create run without pipeline');
       logger.error('Cannot create run without pipeline');
@@ -472,13 +483,12 @@ class NewRun extends Page<{}, NewRunState> {
         if (startDate && endDate && startDate > endDate) {
           throw new Error('End date/time cannot be earlier than start date/time');
         }
-      }
-      const validMaxConcurrentRuns = (input: string) =>
-        !isNaN(Number.parseInt(input, 10)) && +input > 0;
+        const validMaxConcurrentRuns = (input: string) =>
+          !isNaN(Number.parseInt(input, 10)) && +input > 0;
 
-      if (hasTrigger && maxConcurrentRuns !== undefined &&
-        !validMaxConcurrentRuns(maxConcurrentRuns)) {
-        throw new Error('For triggered runs, maximum concurrent runs must be a positive number');
+        if (maxConcurrentRuns !== undefined && !validMaxConcurrentRuns(maxConcurrentRuns)) {
+          throw new Error('For triggered runs, maximum concurrent runs must be a positive number');
+        }
       }
 
       this.setState({ errorMessage: '' });
